@@ -21,62 +21,76 @@ def apply_extraction(lead: LeadState, text: str) -> None:
         return
 
     pc = extract_people_count(t)
-    if pc and not lead.people_count:
+    if pc and not getattr(lead, "people_count", None):
         lead.people_count = pc
 
     mv = extract_move_in(t)
-    if mv and not lead.move_in:
+    if mv and not getattr(lead, "move_in", None):
         lead.move_in = mv
 
-    last_q = (lead.last_question or "").lower()
+    last_q = (getattr(lead, "last_question", "") or "").lower()
 
     # Employment: if we asked about work — accept any non-empty answer
-    if not lead.employment and ("кем" in last_q or "работ" in last_q):
+    if not getattr(lead, "employment", None) and ("кем" in last_q or "работ" in last_q):
         lead.employment = t[:160]
 
     # Showing: if we asked about showing — store raw and parse
     if "показ" in last_q:
-        if not lead.showing_text:
+        if not getattr(lead, "showing_text", None):
             lead.showing_text = t[:200]
-        if not lead.showing_time:
+        if not getattr(lead, "showing_time", None):
             st = extract_showing_time(t)
             if st:
                 lead.showing_time = st
 
 
 def next_question(lead: LeadState) -> Tuple[str, Optional[str], bool]:
-    if lead.handoff_sent:
+    if getattr(lead, "handoff_sent", False):
         return (FINAL, None, False)
 
-    if not lead.people_count or not lead.move_in:
+    if not getattr(lead, "people_count", None) or not getattr(lead, "move_in", None):
         return (Q1, Q1, False)
 
-    if not lead.employment:
+    if not getattr(lead, "employment", None):
         return (Q2, Q2, False)
 
-    if not lead.showing_time and not lead.showing_text:
+    if not getattr(lead, "showing_time", None) and not getattr(lead, "showing_text", None):
         return (Q3, Q3, False)
 
     return (FINAL, None, True)
 
 
 def decide_reply(lead: LeadState, user_text: str) -> Tuple[str, Optional[str], bool, bool]:
-    before = (lead.people_count, lead.move_in, lead.employment, lead.showing_time, lead.showing_text)
+    before = (
+        getattr(lead, "people_count", None),
+        getattr(lead, "move_in", None),
+        getattr(lead, "employment", None),
+        getattr(lead, "showing_time", None),
+        getattr(lead, "showing_text", None),
+    )
 
     apply_extraction(lead, user_text)
 
-    after = (lead.people_count, lead.move_in, lead.employment, lead.showing_time, lead.showing_text)
+    after = (
+        getattr(lead, "people_count", None),
+        getattr(lead, "move_in", None),
+        getattr(lead, "employment", None),
+        getattr(lead, "showing_time", None),
+        getattr(lead, "showing_text", None),
+    )
     progressed = before != after
 
     # stuck counter: no "не понял" on first fail
+    stuck = getattr(lead, "stuck_count", 0) or 0
     if progressed:
-        lead.stuck_count = 0
+        stuck = 0
     else:
-        lead.stuck_count = (lead.stuck_count or 0) + 1
+        stuck += 1
+    setattr(lead, "stuck_count", stuck)
 
     reply, next_q, do_handoff = next_question(lead)
 
-    if not progressed and lead.last_question and not lead.handoff_sent and lead.stuck_count >= 2:
+    if not progressed and getattr(lead, "last_question", None) and not getattr(lead, "handoff_sent", False) and stuck >= 2:
         reply = "Не совсем понял. " + reply
 
     if next_q:
